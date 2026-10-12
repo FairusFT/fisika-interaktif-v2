@@ -492,6 +492,148 @@ const hang = {
   }
 };
 
+/* ═══════════════ SCENE: BIDANG MIRING + KATROL ═══════════════ */
+const katrol = {
+  id: 'katrol', icon: '⇗', name: 'Bidang + Katrol',
+  desc: 'Balok di bidang miring tersambung tali lewat katrol ke balok yang menggantung.',
+  params: [
+    {k: 'm1',    label: 'Massa m₁ (bidang)',  unit: 'kg', min: 1,   max: 20, step: .5, def: 4},
+    {k: 'm2',    label: 'Massa m₂ (gantung)', unit: 'kg', min: 0.5, max: 20, step: .5, def: 3.5},
+    {k: 'theta', label: 'Sudut θ',            unit: '°',  min: 15,  max: 75, step: 1,  def: 30},
+    {k: 'mus',   label: 'Gesek statis μs',    unit: '',   min: 0,   max: 1,  step: .01, def: .3},
+    {k: 'muk',   label: 'Gesek kinetis μk',   unit: '',   min: 0,   max: 1,  step: .01, def: .2}
+  ],
+  world: {w: 11, h: 6.5},
+  geom(p) {
+    const rad = D2R(p.theta), sin = Math.sin(rad), cos = Math.cos(rad);
+    const L = clamp(3.6 / Math.max(0.3, sin), 4.2, 8.6);
+    const bx = 1.0;
+    const tipX = bx + L * cos, tipY = L * sin;
+    const pulX = tipX + 0.6, pulY = tipY + 0.4;
+    return {bx, tipX, tipY, pulX, pulY, L, rad, sin, cos};
+  },
+  bounds(p, kin) {
+    const g = this.geom(p);
+    const hMin = 0.7, hMax = Math.max(1.3, g.pulY - 1.0);
+    const sMin = Math.max(0.45, hMin - kin.K);
+    const sMax = Math.min(g.L - 0.5, hMax - kin.K);
+    return {sMin, sMax: Math.max(sMin + 0.25, sMax)};
+  },
+  reset(p) {
+    const g = this.geom(p);
+    const s0 = clamp(g.L * 0.32, 0.45, g.L - 0.6);
+    const hMin = 0.7, hMax = Math.max(1.3, g.pulY - 1.0);
+    let h0 = clamp(2.0, hMin + 0.25, hMax - 0.25);
+    if (hMax - hMin < 1.0) h0 = (hMin + hMax) / 2;
+    return {s: s0, K: h0 - s0, v: 0, moving: false, dir: 0};
+  },
+  compute(p, kin) {
+    const g = this.geom(p);
+    const W1 = p.m1 * p.g, W2 = p.m2 * p.g;
+    const N = W1 * g.cos, Wpar = W1 * g.sin;
+    const fsMax = p.mus * N, fk = p.muk * N;
+    const drive = W2 - Wpar;                    // >0: m₂ turun / m₁ naik bidang
+    let moving = kin.moving, aSigned = 0, T = W2, f = 0, dir = 0;
+    if (!moving && Math.abs(drive) > fsMax + 1e-9) moving = true;
+    if (!moving) {
+      f = Math.abs(drive); dir = 0; T = W2;
+      kin.v = 0;
+    } else if (Math.abs(kin.v) < 3e-3 && Math.abs(drive) <= fsMax + 1e-9) {
+      moving = false; kin.v = 0; f = Math.abs(drive); T = W2; dir = 0;
+    } else {
+      const dirNow = Math.abs(kin.v) > 1e-4 ? Math.sign(kin.v) : Math.sign(drive);
+      dir = dirNow;
+      aSigned = dirNow * (Math.abs(drive) - fk) / (p.m1 + p.m2);
+      T = p.m2 * (p.g - aSigned);
+      f = fk;
+    }
+    kin.moving = moving; kin.dir = dir;
+    const a = Math.abs(aSigned);
+    return {W1, W2, N, Wpar, Wperp: N, fsMax, fk, f, drive, T, a, aSigned, moving, dir,
+      dirLabel: !moving ? '—' : (dir === 1 ? 'm₂ turun · m₁ naik bidang' : 'm₁ turun bidang · m₂ naik')};
+  },
+  integrate(p, kin, val, dt) {
+    if (!kin.moving) return;
+    const vNew = kin.v + val.aSigned * dt;
+    if (kin.v !== 0 && Math.sign(vNew) !== Math.sign(kin.v)) { kin.v = 0; kin.moving = false; return; }
+    kin.v = vNew;
+    if (Math.abs(kin.v) < 3e-3 && Math.abs(val.drive) <= val.fsMax + 1e-9) { kin.v = 0; kin.moving = false; return; }
+    kin.s += kin.v * dt;
+    const b = this.bounds(p, kin);
+    if (kin.s < b.sMin) { kin.s = b.sMin; kin.v = 0; kin.moving = false; }
+    else if (kin.s > b.sMax) { kin.s = b.sMax; kin.v = 0; kin.moving = false; }
+  },
+  drag(kin, dsM, p) {
+    const b = this.bounds(p, kin);
+    kin.s = clamp(kin.s + dsM, b.sMin, b.sMax);
+    kin.v = 0; kin.moving = false;
+  },
+  status(p, v) {
+    if (!v.moving) return {cls: 'b-static', label: 'Sistem Diam (seimbang)', reason:
+      `Selisih gaya penggerak |W₂ − W₁sinθ| = <b>${fmt(Math.abs(v.drive))}</b> N masih ditahan gesek statis maksimum <b>${fmt(v.fsMax)}</b> N (gesek bekerja ${fmt(v.f)} N). Sistem diam: a = 0, tali tetap tegang T = W₂ = <b>${fmt(v.T)}</b> N.`};
+    if (v.dir === 1) return {cls: 'b-move', label: 'm₂ Turun · m₁ Naik Bidang ↖', reason:
+      `W₂ = <b>${fmt(v.W2)}</b> N lebih besar dari W₁sinθ + fk = ${fmt(v.Wpar)} + ${fmt(v.fk)} = <b>${fmt(v.Wpar + v.fk)}</b> N. Balok gantung turun dan menarik balok bidang naik: a = <b>${fmt(v.a)}</b> m/s², T = <b>${fmt(v.T)}</b> N.`};
+    return {cls: 'b-down', label: 'm₁ Meluncur Turun · m₂ Naik ↘', reason:
+      `W₁sinθ = <b>${fmt(v.Wpar)}</b> N lebih besar dari W₂ + fk = ${fmt(v.W2)} + ${fmt(v.fk)} = <b>${fmt(v.W2 + v.fk)}</b> N. Balok di bidang meluncur turun dan menarik balok gantung naik: a = <b>${fmt(v.a)}</b> m/s², T = <b>${fmt(v.T)}</b> N.`};
+  },
+  steps(p, v, lengkap) {
+    const th = Math.round(p.theta);
+    const st = [];
+    st.push(S('Gaya normal', 'N = m₁ · g · cos θ', `N = ${fmt(p.m1)} × ${fmt(p.g)} × cos ${th}°`, `N = ${fmt(v.N)} N`));
+    st.push(S('Komponen berat sejajar bidang', 'W₁sinθ = m₁ · g · sin θ', `W₁sinθ = ${fmt(p.m1)} × ${fmt(p.g)} × sin ${th}°`, `W₁sinθ = ${fmt(v.Wpar)} N`));
+    st.push(S('Berat balok gantung', 'W₂ = m₂ · g', `W₂ = ${fmt(p.m2)} × ${fmt(p.g)}`, `W₂ = ${fmt(v.W2)} N`));
+    st.push(S('Gesek statis maksimum', 'f<sub>s,maks</sub> = μ<sub>s</sub> · N', `f<sub>s,maks</sub> = ${fmt(p.mus)} × ${fmt(v.N)}`, `f<sub>s,maks</sub> = ${fmt(v.fsMax)} N`));
+    st.push(S('Gesek kinetis', 'f<sub>k</sub> = μ<sub>k</sub> · N', `f<sub>k</sub> = ${fmt(p.muk)} × ${fmt(v.N)}`, `f<sub>k</sub> = ${fmt(v.fk)} N`));
+    st.push(S('Uji gerak', '|W₂ − W₁sinθ|  vs  f<sub>s,maks</sub>',
+      `|${fmt(v.W2)} − ${fmt(v.Wpar)}| = ${fmt(Math.abs(v.drive))} N  ${v.moving ? '>' : '≤'}  ${fmt(v.fsMax)} N`,
+      v.moving ? 'Sistem BERGERAK' : 'Sistem DIAM', true));
+    if (!v.moving) {
+      st.push(S('Hukum I Newton', 'ΣF = 0', `T = W₂ = ${fmt(v.W2)} N · gesek menahan ${fmt(Math.abs(v.drive))} N`, 'a = 0 m/s²', true));
+    } else if (v.dir === 1) {
+      st.push(S('Hukum II Newton', 'a = (W₂ − W₁sinθ − f<sub>k</sub>) / (m₁ + m₂)',
+        `a = (${fmt(v.W2)} − ${fmt(v.Wpar)} − ${fmt(v.fk)}) / (${fmt(p.m1)} + ${fmt(p.m2)})`,
+        `a = ${fmt(v.a)} m/s² (m₂ turun, m₁ naik)`, true));
+      st.push(S('Tegangan tali', 'T = m₂ (g − a)', `T = ${fmt(p.m2)} × (${fmt(p.g)} − ${fmt(v.a)})`, `T = ${fmt(v.T)} N`, true));
+    } else {
+      st.push(S('Hukum II Newton', 'a = (W₁sinθ − W₂ − f<sub>k</sub>) / (m₁ + m₂)',
+        `a = (${fmt(v.Wpar)} − ${fmt(v.W2)} − ${fmt(v.fk)}) / (${fmt(p.m1)} + ${fmt(p.m2)})`,
+        `a = ${fmt(v.a)} m/s² (m₁ turun bidang, m₂ naik)`, true));
+      st.push(S('Tegangan tali', 'T = m₂ (g + a)', `T = ${fmt(p.m2)} × (${fmt(p.g)} + ${fmt(v.a)})`, `T = ${fmt(v.T)} N`, true));
+    }
+    return st;
+  },
+  vecs(p, v) {
+    return [
+      {id: 'W1', label: 'W₁', val: v.W1, note: {pemula: 'W₁ = berat balok di bidang miring — selalu lurus ke bawah.', lengkap: `W₁ = m₁·g = ${fmt(v.W1)} N.`}},
+      {id: 'Wpar', label: 'W₁sinθ', val: v.Wpar, note: {pemula: 'Bagian berat yang menarik balok menyusuri bidang ke bawah — ini yang "menarik" balok turun.', lengkap: `W₁sinθ = m₁·g·sinθ = ${fmt(v.Wpar)} N, sejajar bidang ke bawah.`}},
+      {id: 'Wperp', label: 'W₁cosθ', val: v.Wperp, note: {pemula: 'Bagian berat yang menekan permukaan. Ini penentu gaya normal & gesekan.', lengkap: `W₁cosθ = m₁·g·cosθ = ${fmt(v.Wperp)} N, sama dengan N.`}},
+      {id: 'N', label: 'N', val: v.N, note: {pemula: 'Dorongan balik bidang ke balok, menyeimbangkan W₁cosθ.', lengkap: `N = ${fmt(v.N)} N (tegak lurus bidang).`}},
+      {id: 'T', label: 'T', val: v.T, note: {pemula: 'T = tarikan tali. Satu tali yang sama menarik balok bidang ke atas-lereng dan balok gantung ke atas.', lengkap: `T = ${fmt(v.T)} N, sama di kedua ujung (katrol licin, tali ringan).`}},
+      {id: 'f', label: 'f', val: v.f, note: v.moving
+        ? {pemula: 'f = gesek kinetis — "rem" bidang kasar yang melawan gerak balok.', lengkap: `f_k = μ_k·N = ${fmt(v.fk)} N, melawan arah gerak m₁.`}
+        : {pemula: 'f = gesek statis — menahan balok supaya tidak mulai bergerak.', lengkap: `f_s = ${fmt(v.f)} N (menyesuaikan), batas maksimum ${fmt(v.fsMax)} N.`}},
+      {id: 'W2', label: 'W₂', val: v.W2, note: {pemula: 'W₂ = berat balok yang menggantung di ujung tali.', lengkap: `W₂ = m₂·g = ${fmt(v.W2)} N.`}}
+    ];
+  },
+  values(p, v) {
+    const th = Math.round(p.theta);
+    return [
+      ['W₁ — berat di bidang', `${fmt(v.W1)} N`],
+      [`W₁sinθ (θ = ${th}°)`, `${fmt(v.Wpar)} N`],
+      [`W₁cosθ (θ = ${th}°)`, `${fmt(v.Wperp)} N`],
+      ['N — gaya normal', `${fmt(v.N)} N`],
+      ['W₂ — berat gantung', `${fmt(v.W2)} N`],
+      ['f_s,maks', `${fmt(v.fsMax)} N`],
+      ['f_k', `${fmt(v.fk)} N`],
+      [`f — gesek aktual (${v.moving ? 'kinetis' : 'statis'})`, `${fmt(v.f)} N`],
+      ['|W₂ − W₁sinθ| — penggerak', `${fmt(Math.abs(v.drive))} N`],
+      ['T — tegangan tali', `${fmt(v.T)} N`],
+      ['a — percepatan', `${fmt(v.a)} m/s²`],
+      ['Arah gerak', v.dirLabel]
+    ];
+  }
+};
+
 /* ═══════════════ KUIS ═══════════════ */
 const QUIZ = {
   flat: [
@@ -530,10 +672,18 @@ const QUIZ = {
     {task: 'Setel θ₁ = <b>50°</b> (beban tetap 50 N), lalu cari θ₂ supaya tegangan tali kiri <b>T₁ = 35 N</b> (toleransi ±1,5 N).',
      hint: 'Pakai T₁ = W·cosθ₂ / sin(θ₁+θ₂) dengan θ₁ = 50°. Coba θ₂ di sekitar 43–47°.',
      check: (p, v) => Math.abs(p.t1 - 50) < 1.5 && Math.abs(p.W - 50) < 0.5 && Math.abs(v.T1 - 35) < 1.5}
+  ],
+  katrol: [
+    {task: 'm₁ = 4 kg di bidang, θ = 30°. Atur m₂ supaya balok gantung <b>turun dengan a = 2 m/s²</b> (±0,2) — sambil tetap pakai μk = 0,2.',
+     hint: 'a = (m₂g − m₁g·sinθ − μk·m₁g·cosθ)/(m₁+m₂). Dari rumus itu m₂ ≈ 4,4 kg.',
+     check: (p, v) => Math.abs(p.m1 - 4) < 0.6 && Math.abs(p.theta - 30) < 1.5 && v.moving && v.dir === 1 && Math.abs(v.a - 2) < 0.2},
+    {task: 'Buat sistem <b>DIAM</b> (seimbang) dengan m₁ = 4 kg, m₂ = 3 kg, θ = 30°.',
+     hint: 'Butuh f_s,maks ≥ |W₂ − W₁sinθ| = 9,8 N. Naikkan μs sampai cukup (≈ 0,29 ke atas).',
+     check: (p, v) => Math.abs(p.m1 - 4) < 0.6 && Math.abs(p.m2 - 3) < 0.35 && Math.abs(p.theta - 30) < 1.5 && !v.moving}
   ]
 };
 
-const SCENES = {flat, incline, atwood, stack, hang};
+const SCENES = {flat, incline, atwood, stack, hang, katrol};
 
 /* ═══════════════ EXPORT ═══════════════ */
 window.Fisika = {SCENES, QUIZ, fmt, fmt0, frac, clamp, D2R};

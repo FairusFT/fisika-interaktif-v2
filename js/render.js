@@ -73,6 +73,7 @@ class Viewer {
       case 'atwood': this.drawAtwood(ctx, kin, val, p, col); break;
       case 'stack': this.drawStack(ctx, kin, val, p, col); break;
       case 'hang': this.drawHang(ctx, kin, val, p, col); break;
+      case 'katrol': this.drawKatrol(ctx, kin, val, p, col); break;
     }
   }
 
@@ -103,10 +104,16 @@ class Viewer {
     ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
     ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   }
-  label(ctx, text, x, y, color, size = 12, align = 'center') {
+  label(ctx, text, x, y, color, size = 12, align = 'center', bg = false) {
     if (text === undefined || text === null) text = '';
     ctx.font = `700 ${size}px ${getComputedStyle(document.body).getPropertyValue('--mono') || 'monospace'}`;
     ctx.textAlign = align; ctx.textBaseline = 'middle';
+    if (bg) {
+      const w = ctx.measureText(text).width + 10, h = size + 7;
+      const bx = align === 'left' ? x - 5 : (align === 'right' ? x - w + 5 : x - w / 2);
+      ctx.fillStyle = 'rgba(11,15,22,.82)';
+      this.roundRect(ctx, bx, y - h / 2, w, h, 5); ctx.fill();
+    }
     ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.72)'; ctx.strokeText(text, x, y);
     ctx.fillStyle = color; ctx.fillText(text, x, y);
   }
@@ -143,15 +150,20 @@ class Viewer {
       if (hot) { ctx.save(); ctx.globalAlpha = .18; ctx.beginPath(); ctx.arc(ex, ey, 16, 0, 7); ctx.fillStyle = color; ctx.fill(); ctx.restore(); }
       let lx, ly;
       if (v.labelPos === 'mid') {
-        lx = a.x + dims.x * len * 0.6 + 26;
-        ly = a.y + dims.y * len * 0.6 - 14;
+        // 62% sepanjang panah, digeser tegak lurus 15px (dua sisi bergantian)
+        const px = a.x + dims.x * len * 0.62, py = a.y + dims.y * len * 0.62;
+        const px2 = -dims.y, py2 = dims.x;               // vektor tegak lurus
+        const side = v.labelSide === -1 ? -1 : 1;
+        lx = px + px2 * 15 * side; ly = py + py2 * 15 * side;
       } else if (v.labelPos === 'right') {
-        lx = a.x + dims.x * len + 30;
-        ly = a.y + dims.y * len * 0.55;
+        lx = a.x + dims.x * len + 34; ly = a.y + dims.y * len * 0.6;
+      } else if (v.labelPos === 'left') {
+        if (Math.abs(dims.x) < 0.3) { lx = a.x - 36; ly = a.y + dims.y * len * 0.6; }
+        else { lx = a.x + dims.x * len * 0.62 - 12; ly = a.y + dims.y * len * 0.62 - 24; }
       } else {
-        lx = a.x + dims.x * (len + 18); ly = a.y + dims.y * (len + 12);
+        lx = a.x + dims.x * (len + 20); ly = a.y + dims.y * (len + 14);
       }
-      this.label(ctx, `${v.label}=${Math.round(v.val)}N`, lx, ly, color, hot ? 14 : 11.5);
+      this.label(ctx, `${v.label}=${Math.round(v.val)}N`, lx, ly, color, hot ? 14 : 11.5, 'center', v.labelBg === true);
       this.vectorHit.push({id: v.id, x1: a.x - 8, y1: Math.min(a.y, ey) - 10, x2: ex + 12, y2: Math.max(a.y, ey) + 10, cx: ex, cy: ey});
     });
   }
@@ -344,6 +356,78 @@ class Viewer {
     this.drawVectors(ctx, [
       {id: 'W', label: 'W', val: p.W, dir: {x: 0, y: 1}, labelPos: 'right'}
     ], anchorB, maxF, col);
+  }
+  drawKatrol(ctx, kin, val, p, col) {
+    const sc = this.scene();
+    const g = sc.geom(p);
+    const s = this.px.s;
+    // bidang miring
+    const a = this.toPix(g.bx, 0), b = this.toPix(g.tipX, g.tipY), c = this.toPix(g.tipX, 0);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.closePath();
+    ctx.fillStyle = 'rgba(56,189,248,.10)'; ctx.fill();
+    ctx.strokeStyle = col('--a1'); ctx.lineWidth = 2; ctx.stroke();
+    // lantai
+    this.ground(ctx, col, 0, g.tipX + 1.2);
+    // sudut
+    const arcR = Math.min(s * 1.1, 58);
+    ctx.beginPath(); ctx.arc(a.x, a.y, arcR, -g.rad, 0);
+    ctx.strokeStyle = col('--warn'); ctx.lineWidth = 2; ctx.stroke();
+    this.label(ctx, `${Math.round(p.theta)}°`, a.x + arcR * 1.25, a.y - arcR * 0.32, col('--warn'), 12);
+    // katrol
+    const pr = Math.min(s * 0.55, 26);
+    const pu = this.toPix(g.pulX, g.pulY);
+    ctx.beginPath(); ctx.arc(pu.x, pu.y, pr, 0, 7);
+    ctx.fillStyle = 'rgba(148,163,184,.3)'; ctx.fill();
+    ctx.strokeStyle = col('--mut'); ctx.lineWidth = 2.5; ctx.stroke();
+    // penyangga kecil
+    ctx.strokeStyle = col('--line2'); ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(pu.x, pu.y - pr); ctx.lineTo(pu.x, pu.y - pr - 16); ctx.stroke();
+    // balok 1 di bidang
+    const bw = 1.0, bh = 0.72;
+    const nx = -Math.sin(g.rad), ny = Math.cos(g.rad);
+    const b1x = g.bx + kin.s * g.cos + nx * bh / 2 + (nx * 0.06);
+    const b1y = kin.s * g.sin + ny * bh / 2;
+    const p1 = this.toPix(b1x, b1y);
+    ctx.save(); ctx.translate(p1.x, p1.y); ctx.rotate(-g.rad);
+    ctx.fillStyle = '#fbbf24'; this.roundRect(ctx, -bw * s / 2, -bh * s / 2, bw * s, bh * s, 6); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; this.roundRect(ctx, -bw * s / 2, -bh * s / 2, bw * s, bh * s, 6); ctx.stroke();
+    ctx.restore();
+    this.label(ctx, fmt(p.m1, 1) + ' kg', p1.x, p1.y, '#0b0f16', 12);
+    // tali: dari balok1 sepanjang bidang ke katrol, lalu turun ke balok2
+    ctx.strokeStyle = col('--ok'); ctx.lineWidth = 2.4;
+    const edge = {x: g.bx + (kin.s + 0.5) * g.cos, y: (kin.s + 0.5) * g.sin};
+    const e2 = this.toPix(edge.x, edge.y);
+    ctx.beginPath(); ctx.moveTo(e2.x, e2.y); ctx.lineTo(pu.x, pu.y); ctx.stroke();
+    // balok 2 gantung
+    const h2 = kin.K + kin.s;
+    const b2w = 1.0, b2h = 0.8;
+    const b2x = g.pulX + 0.35, b2top = g.pulY - h2;
+    const p2 = this.toPix(b2x + b2w / 2, b2top - b2h / 2);
+    ctx.beginPath(); ctx.moveTo(pu.x, pu.y); ctx.lineTo(this.toPix(b2x + b2w / 2, b2top).x, this.toPix(b2x + b2w / 2, b2top).y); ctx.stroke();
+    ctx.fillStyle = '#fbbf24';
+    this.roundRect(ctx, p2.x - b2w * s / 2, p2.y - b2h * s / 2, b2w * s, b2h * s, 6); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; this.roundRect(ctx, p2.x - b2w * s / 2, p2.y - b2h * s / 2, b2w * s, b2h * s, 6); ctx.stroke();
+    this.label(ctx, fmt(p.m2, 1) + ' kg', p2.x, p2.y, '#0b0f16', 12);
+    // vektor balok 1 (anchor = pusat)
+    const maxF = Math.max(val.W1, val.W2, val.N, val.T, val.Wpar, val.f, 1);
+    const downSlope = {x: -g.cos, y: g.sin};     // pixel: turun bidang (kiri-bawah)
+    const upSlope   = {x: g.cos, y: -g.sin};     // pixel: naik bidang (kanan-atas)
+    const fDir = (val.dir === -1) ? upSlope : downSlope;   // gesek melawan arah gerak
+    const list1 = [
+      {id: 'W1', label: 'W₁', val: val.W1, dir: {x: 0, y: 1}, labelPos: 'left', labelBg: true},
+      {id: 'N', label: 'N', val: val.N, dir: {x: nx, y: -ny}, labelPos: 'mid', labelSide: -1, labelBg: true},
+      {id: 'Wperp', label: 'W₁cosθ', val: val.Wperp, dir: {x: -nx, y: ny}, labelPos: 'right', labelBg: true},
+      {id: 'Wpar', label: 'W₁sinθ', val: val.Wpar, dir: downSlope, labelPos: 'mid', labelSide: -1, labelBg: true},
+      {id: 'T', label: 'T', val: val.T, dir: upSlope, labelPos: 'mid', labelSide: 1, labelBg: true},
+      {id: 'f', label: 'f', val: val.f > 0.01 ? val.f : 0, dir: fDir, labelPos: 'left', labelBg: true}
+    ];
+    this.drawVectors(ctx, list1, {x: b1x, y: b1y}, maxF, col);
+    // vektor balok 2: T naik, W2 turun
+    const list2 = [
+      {id: 'W2', label: 'W₂', val: val.W2, dir: {x: 0, y: 1}, labelPos: 'right'},
+      {id: 'T', label: 'T', val: val.T, dir: {x: 0, y: -1}}
+    ];
+    this.drawVectors(ctx, list2, {x: b2x + b2w / 2, y: b2top - b2h / 2}, maxF, col);
   }
   drawStack(ctx, kin, val, p, col) {
     const s = this.px.s;

@@ -30,7 +30,7 @@ for (const id in SCENES) {
   sc.params.forEach(d => p[d.k] = d.def);
   p.g = 9.8;
   S.params[id] = p;
-  S.kin[id] = sc.reset();
+  S.kin[id] = sc.reset(p);
 }
 
 /* ---------- viewer ---------- */
@@ -211,7 +211,7 @@ function buildTabs() {
 }
 function setScene(id) {
   S.sceneId = id; S.selectedVec = null; S.running = false;
-  S.kin[id] = SCENES[id].reset();
+  S.kin[id] = SCENES[id].reset(S.params[id]);
   viewer.setScene(id);
   buildControls();
   $('#hint').innerHTML = SCENES[id].static
@@ -228,7 +228,7 @@ function setScene(id) {
 function setPlayIcon() { $('#btnPlay').textContent = S.running ? '⏸' : '▶'; }
 function togglePlay() { S.running = !S.running; acc = 0; setPlayIcon(); }
 function resetScene() {
-  S.kin[S.sceneId] = scene().reset(); S.running = false; acc = 0;
+  S.kin[S.sceneId] = scene().reset(params()); S.running = false; acc = 0;
   setPlayIcon(); S.lastVal = scene().compute(params(), S.kin[S.sceneId]);
   dirty = true; updatePanel(true); toast('Posisi direset');
 }
@@ -269,6 +269,16 @@ function blockHit(w, loose = true) {
     const inB = w.x > x2 - mB && w.x < x2 + bw2 + mB && w.y > 0 - (loose ? 0 : .06) && w.y < bh2 + mB;
     const inT = w.x > x1 - mT && w.x < x1 + bw1 + mT && w.y > bh2 && w.y < bh2 + bh1 + mT;
     return inB || inT;
+  }
+  if (S.sceneId === 'katrol') {
+    const g = sc.geom(p);
+    const nx = -Math.sin(g.rad), ny = Math.cos(g.rad);
+    const b1x = g.bx + kin.s * g.cos + nx * 0.36;
+    const b1y = kin.s * g.sin + ny * 0.36;
+    const h2 = kin.K + kin.s;
+    const b2x = g.pulX + 0.35 + 0.5, b2y = g.pulY - h2 - 0.4;
+    const r = loose ? 0.9 : 0.55;
+    return Math.hypot(w.x - b1x, w.y - b1y) < r || Math.hypot(w.x - b2x, w.y - b2y) < r;
   }
   if (S.sceneId === 'hang') {
     const v = S.lastVal;
@@ -331,6 +341,10 @@ cv.addEventListener('pointermove', e => {
     }
     else if (S.sceneId === 'atwood') scene().drag(kin, -dy);
     else if (S.sceneId === 'stack') scene().drag(kin, dx);
+    else if (S.sceneId === 'katrol') {
+      const g = scene().geom(p);
+      scene().drag(kin, dx * g.cos + dy * g.sin, p);
+    }
     else if (S.sceneId === 'hang') {
       scene().dragAngles(p, kin, w.x, w.y);
       // sync slider sudut ke nilai baru
