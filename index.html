@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b0f16">
+<title>FisikaLab — Dinamika Partikel: Simulasi Interaktif</title>
+<meta name="description" content="Simulasi interaktif Dinamika Partikel untuk siswa SMA: Hukum Newton, gaya gesek, bidang miring, katrol Atwood, dan tumpukan balok — lengkap dengan kolom pembahasan real-time.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b0f16'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%2338bdf8' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='3.5' fill='%2338bdf8'/%3E%3Cpath d='M16 3v6M16 23v6M3 16h6M23 16h6' stroke='%2334d399' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0b0f16; --bg2:#0e141d; --card:#121a26; --card2:#16202f; --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.14);
+  --fg:#e8eef7; --mut:#93a1b5; --dim:#5d6b80;
+  --a1:#38bdf8; --a2:#a78bfa; --ok:#34d399; --warn:#fbbf24; --bad:#f87171; --acc:#22d3ee;
+  --r:14px; --rs:10px; --sh:0 10px 30px rgba(0,0,0,.35);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#eef2f8; --bg2:#e6ebf3; --card:#ffffff; --card2:#f4f7fb; --line:rgba(15,23,42,.1); --line2:rgba(15,23,42,.18);
+    --fg:#0f1b2d; --mut:#51607a; --dim:#8291a8; --sh:0 10px 26px rgba(15,23,42,.12);
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--sans);background:
+  radial-gradient(1200px 700px at 85% -10%, rgba(56,189,248,.10), transparent 60%),
+  radial-gradient(900px 600px at -10% 110%, rgba(167,139,250,.10), transparent 60%),
+  var(--bg);color:var(--fg);overflow:hidden}
+button,input,select{font-family:inherit;color:inherit}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--line2);border-radius:6px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ---- Topbar ---- */
+.topbar{display:flex;align-items:center;gap:12px;padding:10px 14px;height:58px;border-bottom:1px solid var(--line);background:rgba(9,13,20,.72);backdrop-filter:blur(10px);position:relative;z-index:20}
+@media (prefers-color-scheme: light){.topbar{background:rgba(255,255,255,.75)}}
+.brand{display:flex;align-items:center;gap:9px;font-weight:800;letter-spacing:.3px;white-space:nowrap}
+.brand .logo{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--a1),var(--a2));display:grid;place-items:center;font-size:14px}
+.brand .sub{font-size:11px;font-weight:600;color:var(--mut);border:1px solid var(--line2);padding:2px 8px;border-radius:20px}
+.tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1;justify-content:center}
+.tabs::-webkit-scrollbar{display:none}
+.tab{white-space:nowrap;border:1px solid var(--line2);background:var(--card);padding:7px 12px;border-radius:20px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--mut);transition:all .18s}
+.tab:hover{border-color:var(--a1);color:var(--fg)}
+.tab.on{background:linear-gradient(135deg,rgba(56,189,248,.2),rgba(167,139,250,.2));border-color:var(--a1);color:var(--fg)}
+.topactions{display:flex;gap:8px}
+.tbtn{border:1px solid var(--line2);background:var(--card);padding:8px 12px;border-radius:20px;font-size:12.5px;font-weight:700;cursor:pointer;transition:all .18s}
+.tbtn:hover{border-color:var(--a2);transform:translateY(-1px)}
+
+/* ---- Layout ---- */
+#app{display:grid;grid-template-columns:1fr 402px;height:calc(100vh - 58px)}
+.stage{position:relative;overflow:hidden}
+#cv{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+#cv.grabbing{cursor:grabbing}
+.hint{position:absolute;top:12px;left:14px;display:flex;gap:8px;flex-wrap:wrap;pointer-events:none}
+.hint span{font-size:11px;color:var(--mut);background:rgba(10,15,23,.66);border:1px solid var(--line);padding:5px 10px;border-radius:20px;backdrop-filter:blur(6px)}
+@media (prefers-color-scheme: light){.hint span{background:rgba(255,255,255,.8)}}
+.hud{position:absolute;left:14px;bottom:14px;display:flex;align-items:center;gap:9px}
+.hbtn{width:48px;height:48px;border-radius:50%;border:1px solid var(--line2);background:var(--card);box-shadow:var(--sh);font-size:19px;cursor:pointer;display:grid;place-items:center;transition:transform .15s,border-color .15s}
+.hbtn:hover{transform:scale(1.06);border-color:var(--a1)}
+.hbtn.play{background:linear-gradient(135deg,var(--a1),var(--a2));border:none;color:#04121f;font-weight:900}
+.speedbox{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line2);border-radius:22px;padding:6px 10px;font-size:12px;box-shadow:var(--sh)}
+.speedbox input{width:86px;accent-color:var(--a1)}
+.speedbox b{min-width:34px;text-align:right;font-family:var(--mono);font-size:11.5px}
+.fps{position:absolute;right:12px;bottom:12px;font:600 11px var(--mono);color:var(--ok);background:rgba(8,12,18,.7);padding:4px 8px;border-radius:6px;display:none}
+.fps.on{display:block}
+
+/* ---- Panel ---- */
+.panel{overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px;border-left:1px solid var(--line);background:var(--bg2)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:13px}
+.card>h3{font-size:12px;font-weight:800;letter-spacing:.8px;color:var(--mut);text-transform:uppercase;display:flex;align-items:center;gap:7px;margin-bottom:10px}
+.card>h3::before{content:'';width:7px;height:7px;border-radius:50%;background:linear-gradient(135deg,var(--a1),var(--a2))}
+.ctrl{display:grid;grid-template-columns:96px 1fr 62px;align-items:center;gap:8px;margin:7px 0}
+.ctrl label{font-size:12.5px;color:var(--fg);white-space:nowrap}
+.ctrl label small{display:block;color:var(--dim);font-size:10px}
+.ctrl input[type=range]{width:100%;height:5px;-webkit-appearance:none;background:var(--line2);border-radius:4px;outline:none}
+.ctrl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;border-radius:50%;background:var(--a1);cursor:pointer;box-shadow:0 0 0 4px rgba(56,189,248,.16)}
+.ctrl input[type=number]{width:62px;padding:4px 7px;border:1px solid var(--line2);border-radius:7px;background:var(--bg);font-size:12px;text-align:right;font-family:var(--mono)}
+.ctrl select{grid-column:2/4;padding:5px 8px;border:1px solid var(--line2);border-radius:7px;background:var(--bg);font-size:12px}
+.hidden{display:none!important}
+
+/* ---- Pembahasan ---- */
+.badge{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:20px;font-size:11.5px;font-weight:800;letter-spacing:.3px}
+.badge b{width:7px;height:7px;border-radius:50%;background:currentColor}
+.b-static{color:var(--ok);background:rgba(52,211,153,.13);border:1px solid rgba(52,211,153,.35)}
+.b-move{color:var(--acc);background:rgba(34,211,238,.12);border:1px solid rgba(34,211,238,.35)}
+.b-down{color:var(--bad);background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.35)}
+.reason{font-size:12.5px;line-height:1.6;color:var(--mut);margin-top:8px}
+.reason b{color:var(--fg)}
+.lawchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.chip{font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:20px;border:1px solid var(--line2);color:var(--mut);background:var(--card2)}
+.chip.hot{border-color:var(--warn);color:var(--warn)}
+.chip.acc{border-color:var(--a1);color:var(--a1)}
+.vecnote{display:none;margin-top:9px;font-size:12px;padding:9px 11px;border-radius:var(--rs);background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.35)}
+.vecnote.on{display:block}
+.step{border-left:3px solid var(--line2);padding:2px 0 6px 11px;margin:11px 0 0}
+.step.hl{border-left-color:var(--a1);background:rgba(56,189,248,.07);border-radius:0 var(--rs) var(--rs) 0}
+.step__t{font-size:12px;font-weight:800;color:var(--fg);margin-bottom:4px}
+.step__t i{font-style:normal;color:var(--dim);font-weight:600;font-size:10.5px;margin-left:5px}
+.eq{font-family:var(--mono);font-size:12.3px;line-height:1.75;color:var(--mut);white-space:normal;word-break:break-word}
+.eq.gen{color:var(--dim)}
+.eq.res{color:var(--fg);font-weight:700}
+.eq b{color:var(--acc)}
+.frac{display:inline-flex;flex-direction:column;vertical-align:middle;text-align:center;font-size:.94em;line-height:1.12;margin:0 2px;transform:translateY(-1px)}
+.frac .num{border-bottom:1.4px solid currentColor;padding:0 3px}
+.frac .den{padding:0 3px}
+table.vals{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+table.vals td{padding:5.5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+table.vals tr:last-child td{border-bottom:none}
+table.vals td.k{color:var(--mut);white-space:nowrap}
+table.vals td.v{text-align:right;font-family:var(--mono);font-weight:700}
+table.vals tr.hl td{background:rgba(56,189,248,.09)}
+.toggle{display:flex;gap:4px;background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:3px;margin-bottom:10px}
+.toggle button{flex:1;border:none;background:transparent;padding:6px;border-radius:7px;font-size:11.5px;font-weight:700;color:var(--mut);cursor:pointer}
+.toggle button.on{background:var(--card);color:var(--fg);box-shadow:0 1px 4px rgba(0,0,0,.25)}
+
+/* ---- Modal / Quiz / Toast ---- */
+.ovl{position:fixed;inset:0;background:rgba(5,8,13,.66);backdrop-filter:blur(5px);display:none;place-items:center;z-index:60;padding:16px}
+.ovl.open{display:grid}
+.dlg{background:var(--card);border:1px solid var(--line2);border-radius:18px;max-width:680px;width:100%;max-height:88vh;overflow-y:auto;padding:20px;box-shadow:var(--sh);animation:pop .22s ease}
+@keyframes pop{from{transform:scale(.96);opacity:0}to{transform:scale(1);opacity:1}}
+.dlg h2{font-size:19px;margin-bottom:4px;display:flex;align-items:center;gap:9px}
+.dlg .lede{color:var(--mut);font-size:13px;margin-bottom:14px}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mcard{background:var(--card2);border:1px solid var(--line);border-radius:var(--rs);padding:12px}
+.mcard h4{font-size:13px;margin-bottom:5px;color:var(--a1)}
+.mcard p{font-size:12.3px;color:var(--mut);line-height:1.55}
+.mcard .fx{font-family:var(--mono);font-size:12px;color:var(--acc);margin-top:5px}
+.dlgfoot{display:flex;justify-content:flex-end;gap:9px;margin-top:16px}
+.btn{border:1px solid var(--line2);background:var(--card2);padding:9px 16px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;transition:all .16s}
+.btn:hover{border-color:var(--a1)}
+.btn.primary{background:linear-gradient(135deg,var(--a1),var(--a2));border:none;color:#04121f}
+.btn.primary:hover{filter:brightness(1.08)}
+.quiztask{background:var(--card2);border:1px dashed var(--line2);border-radius:var(--rs);padding:13px;font-size:13.5px;line-height:1.6;margin:10px 0}
+.quiztask b{color:var(--acc)}
+.quizmeta{display:flex;justify-content:space-between;font-size:11.5px;color:var(--mut);margin-bottom:6px}
+.quizres{font-size:13px;font-weight:700;margin-top:10px;min-height:20px}
+.quizres.ok{color:var(--ok)}
+.quizres.no{color:var(--bad)}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--card);border:1px solid var(--line2);padding:11px 18px;border-radius:12px;font-size:13px;font-weight:700;box-shadow:var(--sh);opacity:0;pointer-events:none;transition:all .25s;z-index:80}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ---- Mobile ---- */
+@media (max-width:980px){
+  body{overflow:auto}
+  .topbar{flex-wrap:wrap;height:auto;padding:9px 10px;gap:8px}
+  .brand .sub{display:none}
+  .tabs{order:3;width:100%;justify-content:flex-start;padding-bottom:2px}
+  #app{grid-template-columns:1fr;grid-template-rows:52vh auto;height:auto}
+  .stage{min-height:300px}
+  .panel{border-left:none;border-top:1px solid var(--line);max-height:none}
+  .mgrid{grid-template-columns:1fr}
+  .hbtn{width:54px;height:54px}
+  .hud{left:10px;bottom:10px}
+}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+.noscript{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);color:var(--fg);z-index:100;padding:24px;text-align:center;font-size:15px}
+</style>
+</head>
+<body>
+<noscript><div class="noscript">Situs ini membutuhkan JavaScript untuk menjalankan simulasi. Aktifkan JavaScript lalu muat ulang halaman.</div></noscript>
+
+<header class="topbar">
+  <div class="brand"><span class="logo">⚛</span>FisikaLab <span class="sub">Dinamika Partikel · SMA</span></div>
+  <nav class="tabs" id="tabs" aria-label="Pilih skenario simulasi"></nav>
+  <div class="topactions">
+    <button class="tbtn" id="btnMateri" title="Baca ringkasan materi">📖 Materi</button>
+    <button class="tbtn" id="btnQuiz" title="Mode latihan soal">🎯 Latihan</button>
+  </div>
+</header>
+
+<main id="app">
+  <section class="stage" id="stage">
+    <canvas id="cv"></canvas>
+    <div class="hint" id="hint"></div>
+    <div class="hud">
+      <button class="hbtn play" id="btnPlay" title="Mulai / jeda (Spasi)" aria-label="Mulai atau jeda">▶</button>
+      <button class="hbtn" id="btnReset" title="Reset posisi (R)" aria-label="Reset">↺</button>
+      <div class="speedbox"><span>Kecepatan</span><input type="range" id="speed" min="0.25" max="2" step="0.25" value="1"><b id="speedVal">1×</b></div>
+    </div>
+    <div class="fps" id="fps">FPS --</div>
+  </section>
+
+  <aside class="panel">
+    <section class="card" id="paramCard">
+      <h3>Kontrol Parameter</h3>
+      <div id="controls"></div>
+      <div class="ctrl" id="ctrlG">
+        <label>Gravitasi g <small>m/s²</small></label>
+        <select id="gPreset">
+          <option value="9.8">Bumi — 9,8</option>
+          <option value="1.62">Bulan — 1,62</option>
+          <option value="3.71">Mars — 3,71</option>
+          <option value="24.8">Jupiter — 24,8</option>
+          <option value="custom">Kustom…</option>
+        </select>
+        <input type="number" id="gCustom" min="0.1" max="50" step="0.01" value="9.8" style="display:none">
+      </div>
+      <div class="ctrl">
+        <label>Vektor tampil</label>
+        <div class="lawchips" id="vecToggles" style="grid-column:2/4"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Kolom Pembahasan</h3>
+      <div id="statusBox"></div>
+      <div class="vecnote" id="vecNote"></div>
+      <div class="toggle" id="modeToggle" role="group" aria-label="Mode penjelasan">
+        <button data-mode="pemula" class="on">🌱 Pemula</button>
+        <button data-mode="lengkap">📐 Lengkap</button>
+      </div>
+      <div id="steps"></div>
+      <h3 style="margin-top:14px">Ringkasan Nilai</h3>
+      <table class="vals" id="valsTable"><tbody></tbody></table>
+    </section>
+  </aside>
+</main>
+
+<div class="ovl" id="materiOvl">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="materiTitle">
+    <h2 id="materiTitle">📖 Baca Materi Dulu — Dinamika Partikel</h2>
+    <p class="lede">Sebelum bereksperimen, kenalan dulu dengan hukum-hukum yang akan kamu lihat bekerja di simulasi.</p>
+    <div class="mgrid">
+      <div class="mcard"><h4>Hukum I Newton — Kelembaman</h4><p>Benda tetap diam atau bergerak lurus beraturan jika resultan gaya nol. Kursi yang kamu duduki tidak bergerak karena semua gaya saling menyeimbangkan.</p><div class="fx">ΣF = 0 → a = 0</div></div>
+      <div class="mcard"><h4>Hukum II Newton — Percepatan</h4><p>Resultan gaya menyebabkan percepatan. Makin besar gaya, makin besar percepatan; makin besar massa, makin sulit dipercepat.</p><div class="fx">ΣF = m · a</div></div>
+      <div class="mcard"><h4>Hukum III Newton — Aksi-Reaksi</h4><p>Setiap aksi ada reaksi yang sama besar dan berlawanan arah. Kaki menendang lantai ke belakang, lantai mendorong kita ke depan.</p><div class="fx">F<sub>aksi</sub> = −F<sub>reaksi</sub></div></div>
+      <div class="mcard"><h4>Gaya Gesek — "Rem" Permukaan</h4><p>Gesek <b>statis</b> menahan benda agar tidak mulai bergerak (nilainya menyesuaikan sampai batas maksimum). Gesek <b>kinetis</b> bekerja saat benda sudah bergerak dan selalu melawan arah gerak.</p><div class="fx">f<sub>s</sub> ≤ μ<sub>s</sub>·N &nbsp;·&nbsp; f<sub>k</sub> = μ<sub>k</sub>·N</div></div>
+      <div class="mcard"><h4>Berat, Normal &amp; Bidang Miring</h4><p>Berat W = m·g selalu ke bawah. Gaya normal N tegak lurus permukaan. Di bidang miring, berat terurai menjadi komponen sejajar (m·g·sin θ) dan tegak lurus (m·g·cos θ).</p><div class="fx">W<sub>∥</sub> = m·g·sin θ &nbsp;·&nbsp; N = m·g·cos θ</div></div>
+      <div class="mcard"><h4>Tegangan Tali &amp; Katrol</h4><p>Pada tali ringan dan katrol licin, tegangan T sama di seluruh tali. Sistem katrol (Atwood) bergerak mengikuti selisih berat kedua balok.</p><div class="fx">a = (m₁−m₂)·g / (m₁+m₂)</div></div>
+    </div>
+    <p class="lede" style="margin-top:14px">🎮 <b>Cara pakai simulasi:</b> tarik balok untuk memindahkannya · geser slider untuk mengubah nilai · <b>klik panah gaya</b> di canvas untuk melihat penjelasannya di kolom pembahasan · tekan tombol ▶ atau <b>Spasi</b> untuk menjalankan simulasi.</p>
+    <div class="dlgfoot">
+      <button class="btn" id="materiSkip">Nanti saja</button>
+      <button class="btn primary" id="materiGo">Mulai Eksperimen 🚀</button>
+    </div>
+  </div>
+</div>
+
+<div class="ovl" id="quizOvl">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="quizTitle">
+    <h2 id="quizTitle">🎯 Mode Latihan</h2>
+    <p class="lede">Selesaikan tantangan dengan mengatur parameter — lalu tekan "Periksa Jawaban".</p>
+    <div class="quizmeta"><span id="quizScore">Skor: 0 ✔</span><span id="quizScn"></span></div>
+    <div class="quiztask" id="quizTask">Memuat tantangan…</div>
+    <div class="quizres" id="quizRes"></div>
+    <div class="dlgfoot">
+      <button class="btn" id="quizNew">Tantangan Baru 🔄</button>
+      <button class="btn" id="quizHint">💡 Petunjuk</button>
+      <button class="btn primary" id="quizCheck">Periksa Jawaban ✓</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script src="js/engine.js"></script>
+<script src="js/render.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
