@@ -398,6 +398,100 @@ const stack = {
   }
 };
 
+
+/* ═══════════════ SCENE: GANTUNG DUA TALI ═══════════════ */
+const hang = {
+  id: 'hang', icon: '⋏', name: 'Gantung Dua Tali', static: true,
+  desc: 'Simpul ditahan dua tali dengan sudut θ₁ dan θ₂, beban W menggantung di bawahnya.',
+  params: [
+    {k: 'W',  label: 'Beban W',           unit: 'N', min: 10, max: 200, step: 5, def: 50},
+    {k: 't1', label: 'Sudut tali kiri θ₁',  unit: '°', min: 5,  max: 85,  step: 1, def: 37},
+    {k: 't2', label: 'Sudut tali kanan θ₂', unit: '°', min: 5,  max: 85,  step: 1, def: 53}
+  ],
+  world: {w: 10, h: 6.8},
+  AX: {xL: 1.6, xR: 8.4, yC: 6.0},
+  geom(p) {
+    const {xL, xR, yC} = this.AX;
+    const r1 = D2R(p.t1), r2 = D2R(p.t2);
+    const D = xR - xL;
+    const den = Math.max(0.08, Math.sin(r1 + r2));
+    const t1len = D * Math.sin(r2) / den;
+    return {kx: xL + t1len * Math.cos(r1), ky: yC - t1len * Math.sin(r1)};
+  },
+  reset() { return {}; },
+  compute(p, kin) {
+    const r1 = D2R(p.t1), r2 = D2R(p.t2);
+    const den = Math.max(0.08, Math.sin(r1 + r2));
+    const T1 = p.W * Math.cos(r2) / den;
+    const T2 = p.W * Math.cos(r1) / den;
+    const g = this.geom(p);
+    return {W: p.W, T1, T2, kx: g.kx, ky: g.ky,
+      T1x: T1 * Math.cos(r1), T1y: T1 * Math.sin(r1),
+      T2x: T2 * Math.cos(r2), T2y: T2 * Math.sin(r2),
+      moving: false, a: 0, net: 0, N: 0, f: 0, fsMax: 0, fk: 0, T: T1,
+      dirLabel: '—', Wpar: 0, Wperp: 0, extra: {r1, r2}};
+  },
+  integrate() { /* statis — tidak ada dinamika */ },
+  dragAngles(p, kin, wx, wy) {
+    const {xL, xR, yC} = this.AX;
+    const x = clamp(wx, xL + 0.7, xR - 0.7);
+    const drop = clamp(yC - wy, 0.5, 3.9);
+    p.t1 = clamp(Math.round(Math.atan2(drop, x - xL) * 180 / Math.PI), 5, 85);
+    p.t2 = clamp(Math.round(Math.atan2(drop, xR - x) * 180 / Math.PI), 5, 85);
+  },
+  status(p, v) {
+    return {cls: 'b-static', label: 'Sistem Seimbang (diam)', reason:
+      `Beban W = <b>${fmt(p.W, 0)}</b> N ditahan komponen vertikal kedua tali: T₁·sin${Math.round(p.t1)}° + T₂·sin${Math.round(p.t2)}° = <b>${fmt(v.T1y)}</b> + <b>${fmt(v.T2y)}</b> = ${fmt(v.T1y + v.T2y)} N. Secara horizontal kedua tali saling mengimbangi: T₁·cosθ₁ = T₂·cosθ₂ = <b>${fmt(v.T1x)}</b> N. Hasilnya T₁ = <b>${fmt(v.T1)}</b> N dan T₂ = <b>${fmt(v.T2)}</b> N — ${v.T1 > v.T2 ? 'tali kiri lebih tegak sehingga lebih tegang' : (v.T2 > v.T1 ? 'tali kanan lebih tegak sehingga lebih tegang' : 'kedua tali sama tegang')}.`};
+  },
+  steps(p, v, lengkap) {
+    const a1 = Math.round(p.t1), a2 = Math.round(p.t2);
+    const st = [];
+    st.push(S('Gaya pada simpul', 'W ke bawah · T₁ ↖ · T₂ ↗', `W = ${fmt(p.W, 0)} N`, 'Simpul DIAM → ΣF = 0 (Hukum I Newton)', true));
+    st.push(S('ΣFₓ = 0 (horizontal)', 'T₁ · cos θ₁ − T₂ · cos θ₂ = 0',
+      `T₁ · cos ${a1}° = T₂ · cos ${a2}°  →  ${fmt(Math.cos(D2R(a1)), 3)}·T₁ = ${fmt(Math.cos(D2R(a2)), 3)}·T₂`, '→ persamaan (1)', true));
+    st.push(S('ΣFᵧ = 0 (vertikal)', 'T₁ · sin θ₁ + T₂ · sin θ₂ = W',
+      `T₁ · sin ${a1}° + T₂ · sin ${a2}° = ${fmt(p.W, 0)}`, '→ persamaan (2)', true));
+    st.push(S('Selesaikan sistem persamaan', 'T₁ = W · cos θ₂ / sin(θ₁ + θ₂)',
+      `T₁ = ${fmt(p.W, 0)} × ${fmt(Math.cos(D2R(a2)), 3)} / sin ${a1 + a2}°`, `T₁ = <b>${fmt(v.T1)} N</b>`, true));
+    st.push(S('', 'T₂ = W · cos θ₁ / sin(θ₁ + θ₂)',
+      `T₂ = ${fmt(p.W, 0)} × ${fmt(Math.cos(D2R(a1)), 3)} / sin ${a1 + a2}°`, `T₂ = <b>${fmt(v.T2)} N</b>`, true));
+    st.push(S('Verifikasi horizontal', 'T₁cos θ₁ = T₂cos θ₂', `${fmt(v.T1x)} = ${fmt(v.T2x)}`, '✓ seimbang', false));
+    st.push(S('Verifikasi vertikal', 'T₁sin θ₁ + T₂sin θ₂ = W', `${fmt(v.T1y)} + ${fmt(v.T2y)} = ${fmt(p.W, 0)}`, '✓ seimbang', false));
+    return st;
+  },
+  vecs(p, v) {
+    const a1 = Math.round(p.t1), a2 = Math.round(p.t2);
+    return [
+      {id: 'T1', label: 'T₁', val: v.T1, note: {
+        pemula: 'T₁ = tarikan tali kiri pada simpul, menyerong ke atas-kiri. Tali yang lebih landai menerima beban lebih kecil.',
+        lengkap: `T₁ = ${fmt(v.T1)} N pada ${a1}° di atas horizontal. Komponen: T₁cos${a1}° = ${fmt(v.T1x)} N (horizontal), T₁sin${a1}° = ${fmt(v.T1y)} N (vertikal).`}},
+      {id: 'T2', label: 'T₂', val: v.T2, note: {
+        pemula: 'T₂ = tarikan tali kanan pada simpul. Tali yang lebih tegak memikul bagian beban yang lebih besar.',
+        lengkap: `T₂ = ${fmt(v.T2)} N pada ${a2}°. Komponen: T₂cos${a2}° = ${fmt(v.T2x)} N (horizontal), T₂sin${a2}° = ${fmt(v.T2y)} N (vertikal).`}},
+      {id: 'W', label: 'W', val: p.W, note: {
+        pemula: 'W = berat beban, selalu menarik lurus ke bawah. Inilah "beban" yang harus ditahan kedua tali.',
+        lengkap: `W = ${fmt(p.W, 0)} N ke bawah, diimbangi T₁sinθ₁ + T₂sinθ₂ = ${fmt(v.T1y)} + ${fmt(v.T2y)} = ${fmt(v.T1y + v.T2y)} N.`}}
+    ];
+  },
+  values(p, v) {
+    const a1 = Math.round(p.t1), a2 = Math.round(p.t2);
+    return [
+      ['W — beban', `${fmt(p.W, 0)} N`],
+      ['θ₁ — sudut tali kiri', `${a1}°`],
+      ['θ₂ — sudut tali kanan', `${a2}°`],
+      ['T₁ — tegangan tali kiri', `${fmt(v.T1)} N`],
+      ['T₂ — tegangan tali kanan', `${fmt(v.T2)} N`],
+      ['T₁ · cos θ₁ (komponen horizontal)', `${fmt(v.T1x)} N`],
+      ['T₂ · cos θ₂ (komponen horizontal)', `${fmt(v.T2x)} N`],
+      ['ΣFₓ — resultan horizontal', `${fmt(v.T1x - v.T2x)} N`],
+      ['T₁ · sin θ₁ (komponen vertikal)', `${fmt(v.T1y)} N`],
+      ['T₂ · sin θ₂ (komponen vertikal)', `${fmt(v.T2y)} N`],
+      ['ΣFᵧ — resultan vertikal', `${fmt(v.T1y + v.T2y - p.W)} N`],
+      ['Tali paling tegang', v.T2 > v.T1 ? 'tali kanan (T₂)' : (v.T1 > v.T2 ? 'tali kiri (T₁)' : 'sama besar')]
+    ];
+  }
+};
+
 /* ═══════════════ KUIS ═══════════════ */
 const QUIZ = {
   flat: [
@@ -428,10 +522,18 @@ const QUIZ = {
     {task: 'Bikin balok atas <b>tergelincir</b> (m₁ = 2 kg, m₂ = 4 kg, μs1 = 0,5). Cari F seminimal mungkin supaya slip (toleransi: baru saja slip).',
      hint: 'Slip terjadi saat m₁·a_bersama > μs1·m₁·g, dengan a_bersama = (F − μk2·(m₁+m₂)g)/(m₁+m₂). Naikkan F sedikit-sedikit.',
      check: (p, v) => v.moving && v.slipping && Math.abs(p.m1 - 2) < 0.6 && Math.abs(p.m2 - 4) < 0.6},
+  ],
+  hang: [
+    {task: 'Beban 50 N menggantung di simpul. Atur kedua sudut tali supaya <b>tegangan kedua tali SAMA BESAR</b> (T₁ = T₂).',
+     hint: 'Dari ΣFₓ: T₁·cosθ₁ = T₂·cosθ₂. Supaya sama besar, kedua sudut harus sama: θ₁ = θ₂. Coba 45° keduanya.',
+     check: (p, v) => Math.abs(p.W - 50) < 0.5 && Math.abs(v.T1 - v.T2) < 0.4},
+    {task: 'Setel θ₁ = <b>50°</b> (beban tetap 50 N), lalu cari θ₂ supaya tegangan tali kiri <b>T₁ = 35 N</b> (toleransi ±1,5 N).',
+     hint: 'Pakai T₁ = W·cosθ₂ / sin(θ₁+θ₂) dengan θ₁ = 50°. Coba θ₂ di sekitar 43–47°.',
+     check: (p, v) => Math.abs(p.t1 - 50) < 1.5 && Math.abs(p.W - 50) < 0.5 && Math.abs(v.T1 - 35) < 1.5}
   ]
 };
 
-const SCENES = {flat, incline, atwood, stack};
+const SCENES = {flat, incline, atwood, stack, hang};
 
 /* ═══════════════ EXPORT ═══════════════ */
 window.Fisika = {SCENES, QUIZ, fmt, fmt0, frac, clamp, D2R};

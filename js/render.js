@@ -10,7 +10,7 @@ class Viewer {
     this.cv = canvas;
     this.ctx = canvas.getContext('2d');
     this.dpr = 1;
-    this.ovec = {W: true, N: true, F: true, f: true, Wpar: true, Wperp: true, T: true, W1: true, W2: true, f1: true, f2: true};
+    this.ovec = {W: true, N: true, F: true, f: true, Wpar: true, Wperp: true, T: true, W1: true, W2: true, f1: true, f2: true, T1: true, T2: true};
     this.sceneId = 'flat';
     this.hoverVec = null;
     this.px = {x: 70, y: 70, s: 70};  // origin & scale
@@ -52,6 +52,7 @@ class Viewer {
   draw(kin, val, p, opts) {
     const {ctx} = this; const sc = this.scene(); const s = this.px.s;
     const {W, H} = this;
+    this.vectorHit = [];       // satu reset per frame; drawVectors boleh dipanggil berkali-kali
     ctx.clearRect(0, 0, W, H);
     const css = getComputedStyle(document.body);
     const col = n => css.getPropertyValue(n).trim();
@@ -71,6 +72,7 @@ class Viewer {
       case 'incline': this.drawIncline(ctx, kin, val, p, col); break;
       case 'atwood': this.drawAtwood(ctx, kin, val, p, col); break;
       case 'stack': this.drawStack(ctx, kin, val, p, col); break;
+      case 'hang': this.drawHang(ctx, kin, val, p, col); break;
     }
   }
 
@@ -123,13 +125,12 @@ class Viewer {
   palette() {
     const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     return dark
-      ? {W: '#a78bfa', N: '#e2e8f0', F: '#38bdf8', f: '#f87171', Wpar: '#fb7185', Wperp: '#fbbf24', T: '#34d399', W1: '#a78bfa', W2: '#c084fc', f1: '#fb923c', f2: '#f87171'}
-      : {W: '#7c3aed', N: '#1e293b', F: '#0284c7', f: '#dc2626', Wpar: '#e11d48', Wperp: '#b45309', T: '#047857', W1: '#7c3aed', W2: '#9333ea', f1: '#c2410c', f2: '#dc2626'};
+      ? {W: '#a78bfa', N: '#e2e8f0', F: '#38bdf8', f: '#f87171', Wpar: '#fb7185', Wperp: '#fbbf24', T: '#34d399', W1: '#a78bfa', W2: '#c084fc', f1: '#fb923c', f2: '#f87171', T1: '#34d399', T2: '#22d3ee'}
+      : {W: '#7c3aed', N: '#1e293b', F: '#0284c7', f: '#dc2626', Wpar: '#e11d48', Wperp: '#b45309', T: '#047857', W1: '#7c3aed', W2: '#9333ea', f1: '#c2410c', f2: '#dc2626', T1: '#047857', T2: '#0e7490'};
   }
   drawVectors(ctx, list, anchor, maxF, col, opts) {
     const cc = this.palette();
     const vs = this.vscale(maxF);
-    this.vectorHit = [];
     list.forEach(v => {
       if (!this.ovec[v.id] || v.val <= 0.05) return;
       const a = this.toPix(anchor.x, anchor.y);
@@ -140,7 +141,16 @@ class Viewer {
       const hot = this.hoverVec === v.id;
       this.arrow(ctx, a.x, a.y, ex, ey, color, hot ? 5 : 3, hot ? 12 : 9);
       if (hot) { ctx.save(); ctx.globalAlpha = .18; ctx.beginPath(); ctx.arc(ex, ey, 16, 0, 7); ctx.fillStyle = color; ctx.fill(); ctx.restore(); }
-      const lx = a.x + dims.x * (len + 18), ly = a.y + dims.y * (len + 12);
+      let lx, ly;
+      if (v.labelPos === 'mid') {
+        lx = a.x + dims.x * len * 0.6 + 26;
+        ly = a.y + dims.y * len * 0.6 - 14;
+      } else if (v.labelPos === 'right') {
+        lx = a.x + dims.x * len + 30;
+        ly = a.y + dims.y * len * 0.55;
+      } else {
+        lx = a.x + dims.x * (len + 18); ly = a.y + dims.y * (len + 12);
+      }
       this.label(ctx, `${v.label}=${Math.round(v.val)}N`, lx, ly, color, hot ? 14 : 11.5);
       this.vectorHit.push({id: v.id, x1: a.x - 8, y1: Math.min(a.y, ey) - 10, x2: ex + 12, y2: Math.max(a.y, ey) + 10, cx: ex, cy: ey});
     });
@@ -281,6 +291,59 @@ class Viewer {
     const l2 = [{id: 'W2', label: 'W₂', val: val.W2, dir: {x: 0, y: 1}}, {id: 'T', label: 'T', val: val.T, dir: r2}];
     this.drawVectors(ctx, l1, anchor1, maxF, col);
     this.drawVectors(ctx, l2, anchor2, maxF, col);
+  }
+  drawHang(ctx, kin, val, p, col) {
+    const {xL, xR, yC} = this.scene().AX;
+    const c1 = this.toPix(xL, yC), c2 = this.toPix(xR, yC);
+    const ceilY = c1.y;
+    // langit-langit: balok + arsir
+    ctx.fillStyle = col('--line2');
+    ctx.fillRect(c1.x - 24, ceilY - 10, (c2.x - c1.x) + 48, 10);
+    ctx.strokeStyle = col('--line2');
+    for (let x = c1.x - 16; x < c2.x + 24; x += 18) {
+      ctx.beginPath(); ctx.moveTo(x + 9, ceilY); ctx.lineTo(x - 3, ceilY + 12); ctx.stroke();
+    }
+    // tali
+    const k = this.toPix(val.kx, val.ky);
+    ctx.strokeStyle = col('--ok'); ctx.lineWidth = 2.6;
+    ctx.beginPath(); ctx.moveTo(c1.x, ceilY); ctx.lineTo(k.x, k.y); ctx.moveTo(c2.x, ceilY); ctx.lineTo(k.x, k.y); ctx.stroke();
+    // simpul
+    ctx.beginPath(); ctx.arc(k.x, k.y, 6, 0, 7); ctx.fillStyle = '#e2e8f0'; ctx.fill();
+    ctx.strokeStyle = '#475569'; ctx.lineWidth = 2; ctx.stroke();
+    // tali bawah + beban (balok abu)
+    const bh = 1.0, bw = 1.2;
+    const bTop = val.ky - 0.9;
+    const bY = Math.max(0.05, bTop - bh);
+    const bp = this.toPix(val.kx + bw / 2, bY + bh / 2);
+    ctx.strokeStyle = col('--ok'); ctx.lineWidth = 2.6;
+    const bTopPix = this.toPix(val.kx, bTop);
+    ctx.beginPath(); ctx.moveTo(k.x, k.y); ctx.lineTo(bTopPix.x, bTopPix.y); ctx.stroke();
+    ctx.fillStyle = '#94a3b8';
+    this.roundRect(ctx, bp.x - bw * this.px.s / 2, bp.y - bh * this.px.s / 2, bw * this.px.s, bh * this.px.s, 6); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.4)'; this.roundRect(ctx, bp.x - bw * this.px.s / 2, bp.y - bh * this.px.s / 2, bw * this.px.s, bh * this.px.s, 6); ctx.stroke();
+    this.label(ctx, `${Math.round(p.W)} N`, bp.x, bp.y, '#0b0f16', 13);
+    // sudut arcs (θ₁ dari horizontal-kanan jangkar kiri; θ₂ dari horizontal-kiri jangkar kanan)
+    const arcR = Math.min(this.px.s * 1.2, 62);
+    ctx.strokeStyle = col('--warn'); ctx.lineWidth = 1.8;
+    const a1pix = Math.atan2(k.y - ceilY, k.x - c1.x);   // 0..π/2 (kanan-bawah)
+    const a2pix = Math.atan2(k.y - ceilY, k.x - c2.x);   // π/2..π (kiri-bawah)
+    ctx.beginPath(); ctx.arc(c1.x, ceilY, arcR, 0, a1pix); ctx.stroke();
+    ctx.beginPath(); ctx.arc(c2.x, ceilY, arcR, Math.PI, a2pix, true); ctx.stroke();
+    this.label(ctx, `${Math.round(p.t1)}°`, c1.x + arcR * 1.05, ceilY + arcR * 0.5, col('--warn'), 11.5);
+    this.label(ctx, `${Math.round(p.t2)}°`, c2.x - arcR * 1.05, ceilY + arcR * 0.5, col('--warn'), 11.5);
+    // vektor: T1 sepanjang tali kiri (arah simpul → jangkar), T2 idem, W dari beban ke bawah
+    const maxF = Math.max(val.T1, val.T2, p.W, 1);
+    const dirT1 = (() => { const dx = c1.x - k.x, dy = c1.y - k.y; const n = Math.hypot(dx, dy) || 1; return {x: dx / n, y: dy / n}; })();
+    const dirT2 = (() => { const dx = c2.x - k.x, dy = c2.y - k.y; const n = Math.hypot(dx, dy) || 1; return {x: dx / n, y: dy / n}; })();
+    const anchorK = {x: val.kx, y: val.ky};
+    const anchorB = {x: val.kx + bw / 2, y: bY + bh / 2};
+    this.drawVectors(ctx, [
+      {id: 'T1', label: 'T₁', val: val.T1, dir: dirT1, labelPos: 'mid'},
+      {id: 'T2', label: 'T₂', val: val.T2, dir: dirT2, labelPos: 'mid'}
+    ], anchorK, maxF, col);
+    this.drawVectors(ctx, [
+      {id: 'W', label: 'W', val: p.W, dir: {x: 0, y: 1}, labelPos: 'right'}
+    ], anchorB, maxF, col);
   }
   drawStack(ctx, kin, val, p, col) {
     const s = this.px.s;

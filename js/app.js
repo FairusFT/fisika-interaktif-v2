@@ -170,8 +170,8 @@ function buildControls() {
   const valNow = sc.compute(params(), S.kin[S.sceneId]);
   const vecIds = [...new Set(sc.vecs(params(), valNow).map(v => v.id))];
   const cc = viewer.palette();
-  const ccLight = {N: '#1e293b', W: '#7c3aed', Wpar: '#e11d48', Wperp: '#b45309', T: '#047857', W1: '#7c3aed', W2: '#9333ea', F: '#0284c7', f: '#dc2626', f1: '#c2410c', f2: '#dc2626'};
-  const ccDark = {N: '#e2e8f0', W: '#a78bfa', Wpar: '#fb7185', Wperp: '#fbbf24', T: '#34d399', W1: '#a78bfa', W2: '#c084fc', F: '#38bdf8', f: '#f87171', f1: '#fb923c', f2: '#f87171'};
+  const ccLight = {N: '#1e293b', W: '#7c3aed', Wpar: '#e11d48', Wperp: '#b45309', T: '#047857', W1: '#7c3aed', W2: '#9333ea', F: '#0284c7', f: '#dc2626', f1: '#c2410c', f2: '#dc2626', T1: '#047857', T2: '#0e7490'};
+  const ccDark = {N: '#e2e8f0', W: '#a78bfa', Wpar: '#fb7185', Wperp: '#fbbf24', T: '#34d399', W1: '#a78bfa', W2: '#c084fc', F: '#38bdf8', f: '#f87171', f1: '#fb923c', f2: '#f87171', T1: '#34d399', T2: '#22d3ee'};
   const chipCol = id => (cc[id] && /^#(0|1|2|3|4|5|6|7|8|9|a|b)[0-9a-f]{5}$/i.test(cc[id])) ? cc[id] : (ccDark[id] || '#888');
   vecTog.innerHTML = vecIds.map(id => `<label class="chip${viewer.ovec[id] !== false ? ' acc' : ''}" style="cursor:pointer;border-color:${chipCol(id)};color:${chipCol(id)}" data-vec="${id}">${id}</label>`).join('');
   vecTog.querySelectorAll('[data-vec]').forEach(ch => {
@@ -214,7 +214,9 @@ function setScene(id) {
   S.kin[id] = SCENES[id].reset();
   viewer.setScene(id);
   buildControls();
-  $('#hint').innerHTML = `<span>🖱 Tarik balok untuk memindahkan</span><span>🎯 Klik panah gaya → penjelasan</span><span>▶/Spasi = jalankan</span>`;
+  $('#hint').innerHTML = SCENES[id].static
+    ? `<span>🖱 Tarik simpul untuk mengubah sudut tali</span><span>🎯 Klik panah gaya → penjelasan</span><span>⚖️ Sistem selalu seimbang</span>`
+    : `<span>🖱 Tarik balok untuk memindahkan</span><span>🎯 Klik panah gaya → penjelasan</span><span>▶/Spasi = jalankan</span>`;
   setPlayIcon();
   S.lastVal = SCENES[id].compute(params(), S.kin[id]);
   dirty = true; updatePanel(true);
@@ -268,6 +270,19 @@ function blockHit(w, loose = true) {
     const inT = w.x > x1 - mT && w.x < x1 + bw1 + mT && w.y > bh2 && w.y < bh2 + bh1 + mT;
     return inB || inT;
   }
+  if (S.sceneId === 'hang') {
+    const v = S.lastVal;
+    if (!v || v.kx === undefined) return false;
+    // simpul + seluruh daerah beban menggantung
+    const r = loose ? 0.75 : 0.45;
+    const onKnot = Math.hypot(w.x - v.kx, w.y - v.ky) < r;
+    const bw = 1.2, bh = 1.0;
+    const bY = Math.max(0.05, v.ky - 0.9 - bh);
+    const bx = v.kx, byTop = bY + bh;
+    const pad = loose ? 0.3 : 0.05;
+    const onLoad = w.x > bx - pad && w.x < bx + bw + pad && w.y > bY - pad && w.y < byTop + pad;
+    return onKnot || onLoad;
+  }
   return false;
 }
 
@@ -316,6 +331,17 @@ cv.addEventListener('pointermove', e => {
     }
     else if (S.sceneId === 'atwood') scene().drag(kin, -dy);
     else if (S.sceneId === 'stack') scene().drag(kin, dx);
+    else if (S.sceneId === 'hang') {
+      scene().dragAngles(p, kin, w.x, w.y);
+      // sync slider sudut ke nilai baru
+      $$('#controls .ctrl').forEach(row => {
+        const k = row.dataset.k; if (k !== 't1' && k !== 't2') return;
+        const val = p[k];
+        const rng = row.querySelector('input[type=range]'), num = row.querySelector('input[type=number]');
+        if (parseFloat(rng.value) !== val) rng.value = val;
+        if (parseFloat(num.value) !== val) num.value = val;
+      });
+    }
     drag = {x: w.x, y: w.y};
     S.lastVal = scene().compute(p, kin);
     dirty = true;
